@@ -10,7 +10,7 @@
 
 #include "UTClib.h"
 
-static int findUTC_debug = 0;  /* default is debug output is off */
+static int findUTC_debug = DEBUG_OFF;  /* default is debug output is off */
 
 /*-------------------------------------------------------------------------
  * Debugging function allows user to set a level of DEBUG information
@@ -187,8 +187,8 @@ int format_match(char *dtstr, int format)
             if (dtstr[19] == 'Z' )
             {
                 /* We have a correct TMZ so shorten the chklen
-		 * and NULL terminate the string after the Z
-		*/
+                 * and NULL terminate the string after the Z
+                */
                 UTCLIB_DEBUG( "Debug: tmz len [%d] val [%c] TRIMMING!\n",
                               chklen, dtstr[19] );
                 dtstr[20] = '\0';
