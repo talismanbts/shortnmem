@@ -26,7 +26,7 @@ enum lcl_exit_codes_l {
 enum parse_formats_l {
     TABLE_FORM,  /* a date on each line */
     TEXT_FORM,   /* dates randomly in text */
-         /* possible future formats */
+         /* possible future formats, but the above TEXT_FORM could probably handle most */
     TRIM_FORM,   /* a date with 'extraneous white space' on each line */
     COLUMN_FORM, /* a date starts on specific column of each line */
     FIELD_FORM   /* dates in fields (white space or comma separated) */
@@ -94,7 +94,9 @@ int main( int argc, char **argv)
     int    i = 0;
     int    filename_arg_found = 0;
     int    line_fill_amount = MAX_LINE_LEN;
-    int    parse_form = 0; /* default TABLE format */
+    int    full_line_read = 1;  /* start with a full read buffer for text mode */
+    int    line_read_initial = 0;  /* start with a full read buffer for text mode */
+    int    parse_form = 0;      /* default TABLE format */
 
     memset( line, '\0', sizeof(line) );
     memset( filename, '\0', sizeof(filename) );
@@ -167,16 +169,21 @@ int main( int argc, char **argv)
         cleanup( FILE_NOT_FOUND, valid_list );
     }
     /* our first read should be the maximum */
-    line_fill_amount = MAX_LINE_LEN;
+    full_line_read = 1; /* having read nothing yet, consider the 'Previous' line a full read */
     while ( loop_file )
     {
-        if ( fgets(line, MAX_LINE_LEN, fptr) == NULL )
+        line_read_initial = 0;
+        if ( full_line_read == 1 )
+        {
+            line_fill_amount = MAX_LINE_LEN;
+            line_read_initial = 1;
+        }
+        if ( fgets(line+(MAX_LINE_LEN-line_fill_amount), line_fill_amount, fptr) == NULL )
         {
             loop_file = 0;
             /* check for end of file */
             if ( feof(fptr) )
             {
-                loop_file = 0;
                 continue;
             }
             /* log error and break as well */
@@ -188,10 +195,21 @@ int main( int argc, char **argv)
         if ( line[ chk_val ] == '\n' )
         {
             line[ chk_val ] = '\0'; /* remove EOL */
+            full_line_read = 1;     /* make sure we know this line ended */
+        }
+        else
+        {
+            full_line_read = 0;     /* this line did not end on this read */
         }
         switch (parse_form)
         {
             case TABLE_FORM:
+                /* is this not the initial buffer of a (possibly) long line? */
+                if ( line_read_initial == 0 )
+                {
+                    /* TABLE mode expects a single date per line skip the rest of long line */
+                    continue;
+                }
                 /* parse the file 'line by line' */
                 UTCLIB_DEBUG("Debug: parsing <%s>\n", line );
                 chk_val = format_match( line, UTC8601 );
@@ -241,15 +259,31 @@ int main( int argc, char **argv)
                     else
                     {
                         /* no match, first let's make sure we have enough
-                         * text left to locate a new  date
+                         *   text left to locate a new  date
+                         * make sure if we are 1 character away from a long
+                         *   form date it all gets pushed into the next buffer
+                         * also make sure if we read to end of line we just finish
+                         *   parsing this buffer (for a possible short form date)
                          */
-                        if ( (strlen(line) - offset) < 20 )
+                        if ( ( ((strlen(line)-offset)<25) && (full_line_read == 0) )
+                        ||   ((strlen(line)-offset)<20) )
                         {
                             /* we have less than the minimum left */
                             loop_line = 0;
                         }
-                        offset++; /* just 1 character */
+                        else
+                        {
+                            offset++; /* just 1 character */
+                        }
                     }
+                }
+                /* is this buffer part of a (possibly) long line? */
+                if ( full_line_read == 0 )
+                {
+                    /* save the remaining part of the long line (19 characters */
+                    memset( line, '\0', sizeof(line) );
+                    strncpy( line, clean_line, sizeof(line) );
+                    line_fill_amount = MAX_LINE_LEN - strlen(line);
                 }
                 break;
             default:
